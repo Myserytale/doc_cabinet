@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: docvault
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/docvault
+    username: docvault
+    password: docvaultpassword
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    url: jdbc:postgresql://localhost:5432/docvault
+    user: docvault
+    password: docvaultpassword
+
+server:
+  port: 8080
+
+spring.servlet.multipart:
+  max-file-size: 50MB
+  max-request-size: 50MB
+
+docvault:
+  minio:
+    url: http://localhost:9000
+    access-key: docvaultadmin
+    secret-key: docvaultadminpassword
+    bucket: docvault
+  elasticsearch:
+    uris: http://localhost:9200
