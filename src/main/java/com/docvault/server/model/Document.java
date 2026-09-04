@@ -12,6 +12,7 @@ public class Document {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
@@ -37,10 +38,13 @@ public class Document {
     @Column(nullable = false)
     private String status = "PENDING";
 
+    @Column(name = "error_message")
+    private String errorMessage;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "updated_at", insertable = false, updatable = false)
+    @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
     // Getters and Setters
@@ -63,6 +67,8 @@ public class Document {
     public void setChecksum(String checksum) { this.checksum = checksum; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public String getErrorMessage() { return errorMessage; }
+    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
