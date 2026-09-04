@@ -49,10 +49,17 @@ export const api = {
       body: JSON.stringify({ username, email, password }),
     });
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err || 'Registration failed');
+      let errMsg = 'Registration failed';
+      try {
+        const data = await res.json();
+        errMsg = data.error || data.message || data.detail || errMsg;
+      } catch {
+        const text = await res.text();
+        if (text) errMsg = text;
+      }
+      throw new Error(errMsg);
     }
-    return res.text();
+    return res.json();
   },
 
   async login(username, password) {
@@ -62,8 +69,15 @@ export const api = {
       body: JSON.stringify({ username, password }),
     });
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err || 'Invalid username or password');
+      let errMsg = 'Invalid username or password';
+      try {
+        const data = await res.json();
+        errMsg = data.error || data.message || data.detail || errMsg;
+      } catch {
+        const text = await res.text();
+        if (text) errMsg = text;
+      }
+      throw new Error(errMsg);
     }
     const data = await res.json();
     setAuthSession(data.jwt, username);

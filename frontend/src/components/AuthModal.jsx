@@ -84,12 +84,15 @@ export function AuthModal({ onAuthSuccess }) {
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">Username</label>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              Username {isRegister && <span className="text-slate-500">(min 3 chars)</span>}
+            </label>
             <div className="relative">
               <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
                 required
+                minLength={3}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="e.g. john_doe"
@@ -116,12 +119,15 @@ export function AuthModal({ onAuthSuccess }) {
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">Password</label>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              Password {isRegister && <span className="text-slate-500">(min 6 chars)</span>}
+            </label>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
                 type="password"
                 required
+                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
