@@ -1,82 +1,79 @@
-# DocVault (doc_cabinet)
+# DocVault
 
-DocVault is a secure, high-performance document management and full-text search platform built with Spring Boot, PostgreSQL, MinIO S3 object storage, Apache Tika, and Elasticsearch.
+Document management and full-text search platform built with Spring Boot, PostgreSQL, MinIO, Apache Tika, Elasticsearch, and React.
 
----
+## Architecture
 
-## 🏗 Architecture & Technologies
+- Backend: Java 21, Spring Boot 4.x, Spring Security (JWT)
+- Frontend: React 19, Tailwind CSS, Lucide Icons, Vite
+- Storage: PostgreSQL 16 (metadata), MinIO S3 (binary files)
+- Text Extraction: Apache Tika (PDF, DOCX, XLSX, PPTX, TXT, HTML)
+- Search Engine: Elasticsearch 8.13 (multi-tenant isolated querying with highlighting)
+- Async Processing: Spring TaskExecutor
 
-- **Backend**: Java 21, Spring Boot 4.x, Spring Security (Stateless JWT authentication)
-- **Database**: PostgreSQL 16 with Flyway database migrations
-- **Object Storage**: MinIO S3 for binary document storage
-- **Text & Metadata Extraction**: Apache Tika (supports PDF, DOCX, TXT, HTML, RTF, PPTX, XLSX, etc.)
-- **Full-Text Search Engine**: Elasticsearch 8.13 with highlighted query snippets and strict multi-tenant isolation
-- **Asynchronous Task Queue**: Spring `@Async` ThreadPoolTaskExecutor for background document processing
+## Setup & Running
 
----
-
-## 🚀 Quick Start
-
-### 1. Prerequisites
-- Java 21+
-- Docker and Docker Compose
-
-### 2. Start Infrastructure
-Start PostgreSQL, MinIO, and Elasticsearch:
+### 1. Start Services
 ```bash
 docker compose up -d
 ```
 
-Services exposed:
-- **PostgreSQL**: `localhost:5432` (`docvault` / `docvaultpassword`)
-- **MinIO S3 API**: `http://localhost:9000` (`docvaultadmin` / `docvaultadminpassword`)
-- **MinIO Web Console**: `http://localhost:9001`
-- **Elasticsearch API**: `http://localhost:9200`
+Services:
+- PostgreSQL: `localhost:5432` (`docvault` / `docvaultpassword`)
+- MinIO: `localhost:9000` (Console: `localhost:9001`)
+- Elasticsearch: `localhost:9200`
 
-### 3. Run the Application
+### 2. Backend
 ```bash
 ./gradlew bootRun
 ```
-The server will start on port `8080`.
+Listens on port 8080.
 
-### 4. Run Tests
+### 3. Frontend
+
+Development mode:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Runs at `http://localhost:3000` with API proxy to port 8080.
+
+Production mode:
+Built assets are located in `src/main/resources/static` and served directly by Spring Boot at `http://localhost:8080/`.
+
+To rebuild assets:
+```bash
+cd frontend
+npm run build
+cp -r dist/* ../src/main/resources/static/
+```
+
+### 4. Tests
 ```bash
 ./gradlew test
 ```
 
----
+## API Endpoints
 
-## 📡 API Reference
-
-All requests to `/api/documents/**` require an `Authorization: Bearer <JWT_TOKEN>` header.
+All `/api/documents/**` endpoints require `Authorization: Bearer <token>`.
 
 ### Authentication (`/api/auth`)
-
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/auth/register` | Register a new account (`username`, `email`, `password`) |
-| `POST` | `/api/auth/login` | Authenticate and receive a JWT token |
+- `POST /api/auth/register`: Register user (`username`, `email`, `password`)
+- `POST /api/auth/login`: Authenticate and obtain JWT
 
 ### Documents (`/api/documents`)
+- `POST /api/documents`: Upload file (`multipart/form-data`, optional `title`)
+- `GET /api/documents`: List current user's documents
+- `GET /api/documents/{id}`: Retrieve document metadata and processing status
+- `GET /api/documents/{id}/download`: Download original file
+- `GET /api/documents/search?q={query}`: Full-text search with highlights
+- `POST /api/documents/{id}/reindex`: Trigger document re-indexing
+- `DELETE /api/documents/{id}`: Delete from database, storage, and search index
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/documents` | Upload a document (`file` multipart, optional `title`). Triggers async processing. |
-| `GET` | `/api/documents` | List all documents owned by the authenticated user |
-| `GET` | `/api/documents/{id}` | Get document metadata, checksum, status (`PENDING`, `PROCESSING`, `INDEXED`, `FAILED`) |
-| `GET` | `/api/documents/{id}/download` | Stream and download original file from MinIO |
-| `GET` | `/api/documents/search?q={query}&page=0&size=10` | Full-text search across user's documents with `<mark>` highlight snippets |
-| `POST` | `/api/documents/{id}/reindex` | Trigger background text extraction and reindexing |
-| `DELETE` | `/api/documents/{id}` | Delete document from PostgreSQL, MinIO storage, and Elasticsearch index |
+## Ingestion Pipeline
 
----
-
-## 🔄 Document Ingestion Pipeline
-
-1. **Upload**: Document is stored in MinIO under `<userId>/<uuid>-<filename>` and saved in PostgreSQL with status `PENDING`.
-2. **Background Processing**:
-   - Status transitions to `PROCESSING`.
-   - Complete SHA-256 checksum is computed over the binary stream.
-   - Text is extracted using Apache Tika's `AutoDetectParser`.
-   - Document metadata and text content are indexed into Elasticsearch under the user's isolated partition.
-   - Status updates to `INDEXED` (or `FAILED` with `error_message` on parse errors).
+1. File uploaded and saved to MinIO (`status: PENDING`).
+2. Background task computes SHA-256 checksum and extracts text via Apache Tika (`status: PROCESSING`).
+3. Extracted text and metadata are indexed in Elasticsearch.
+4. Record updated in PostgreSQL (`status: INDEXED` or `status: FAILED` with error details).
