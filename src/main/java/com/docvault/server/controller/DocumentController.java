@@ -1,9 +1,13 @@
 package com.docvault.server.controller;
 
+import com.docvault.server.dto.DocumentDto;
+import com.docvault.server.dto.DocumentSearchResponse;
 import com.docvault.server.model.Document;
 import com.docvault.server.model.User;
 import com.docvault.server.repository.DocumentRepository;
 import com.docvault.server.repository.UserRepository;
+import com.docvault.server.service.DocumentProcessingService;
+import com.docvault.server.service.SearchService;
 import com.docvault.server.service.StorageService;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
@@ -27,11 +31,19 @@ public class DocumentController {
     private final DocumentRepository documentRepository;
     private final StorageService storageService;
     private final UserRepository userRepository;
+    private final DocumentProcessingService documentProcessingService;
+    private final SearchService searchService;
 
-    public DocumentController(DocumentRepository documentRepository, StorageService storageService, UserRepository userRepository) {
+    public DocumentController(DocumentRepository documentRepository,
+                              StorageService storageService,
+                              UserRepository userRepository,
+                              DocumentProcessingService documentProcessingService,
+                              SearchService searchService) {
         this.documentRepository = documentRepository;
         this.storageService = storageService;
         this.userRepository = userRepository;
+        this.documentProcessingService = documentProcessingService;
+        this.searchService = searchService;
     }
 
     private User getCurrentUser() {
@@ -44,14 +56,14 @@ public class DocumentController {
     public ResponseEntity<?> uploadDocument(@RequestParam("file") MultipartFile file,
                                             @RequestParam(value = "title", required = false) String title) {
         User user = getCurrentUser();
-        
+
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body("File is empty");
         }
 
         try {
             String originalFilename = file.getOriginalFilename();
-            String docTitle = (title != null && !title.isEmpty()) ? title : originalFilename;
+            String docTitle = (title != null && !title.isBlank()) ? title : originalFilename;
             String contentType = file.getContentType();
             long size = file.getSize();
 
@@ -67,7 +79,11 @@ public class DocumentController {
             document.setStatus("PENDING");
 
             Document savedDoc = documentRepository.save(document);
-            return ResponseEntity.ok(savedDoc);
+
+            // Trigger background text extraction and Elasticsearch indexing
+            documentProcessingService.processDocumentAsync(savedDoc.getId());
+
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(DocumentDto.from(savedDoc));
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Could not upload file: " + e.getMessage());
@@ -75,10 +91,29 @@ public class DocumentController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Document>> listDocuments() {
+    public ResponseEntity<List<DocumentDto>> listDocuments() {
         User user = getCurrentUser();
         List<Document> docs = documentRepository.findByUserId(user.getId());
-        return ResponseEntity.ok(docs);
+        List<DocumentDto> dtos = docs.stream().map(DocumentDto::from).toList();
+        return ResponseEntity.ok(dtos);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<DocumentDto> getDocument(@PathVariable UUID id) {
+        User user = getCurrentUser();
+        return documentRepository.findByIdAndUserId(id, user.getId())
+                .map(doc -> ResponseEntity.ok(DocumentDto.from(doc)))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<DocumentSearchResponse> searchDocuments(
+            @RequestParam(value = "q", required = false) String query,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
+        User user = getCurrentUser();
+        DocumentSearchResponse results = searchService.searchDocuments(user.getId(), query, page, size);
+        return ResponseEntity.ok(results);
     }
 
     @GetMapping("/{id}/download")
@@ -101,5 +136,41 @@ public class DocumentController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error downloading file: " + e.getMessage());
         }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteDocument(@PathVariable UUID id) {
+        User user = getCurrentUser();
+        Document document = documentRepository.findByIdAndUserId(id, user.getId()).orElse(null);
+
+        if (document == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        try {
+            // Delete from MinIO
+            storageService.deleteFile(document.getStoragePath());
+            // Delete from Elasticsearch
+            searchService.deleteDocument(document.getId().toString());
+            // Delete from PostgreSQL
+            documentRepository.delete(document);
+
+            return ResponseEntity.noContent().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error deleting file: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/reindex")
+    public ResponseEntity<?> reindexDocument(@PathVariable UUID id) {
+        User user = getCurrentUser();
+        Document document = documentRepository.findByIdAndUserId(id, user.getId()).orElse(null);
+
+        if (document == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        documentProcessingService.processDocumentAsync(document.getId());
+        return ResponseEntity.accepted().body("Reindexing triggered for document " + id);
     }
 }
