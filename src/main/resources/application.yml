@@ -3,39 +3,51 @@ spring:
     name: docvault
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/docvault
-    username: docvault
-    password: docvaultpassword
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/docvault}
+    username: ${SPRING_DATASOURCE_USERNAME:docvault}
+    password: ${SPRING_DATASOURCE_PASSWORD:docvaultpassword}
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
   flyway:
     enabled: true
     baseline-on-migrate: true
-    url: jdbc:postgresql://localhost:5432/docvault
-    user: docvault
-    password: docvaultpassword
+    url: ${SPRING_FLYWAY_URL:${spring.datasource.url}}
+    user: ${SPRING_FLYWAY_USER:${spring.datasource.username}}
+    password: ${SPRING_FLYWAY_PASSWORD:${spring.datasource.password}}
 
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 spring.servlet.multipart:
   max-file-size: 50MB
   max-request-size: 50MB
 
+jwt:
+  secret: ${JWT_SECRET:thisIsADefaultSecretKeyWithAtLeast32Characters}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+
 docvault:
   minio:
-    url: http://localhost:9000
-    access-key: docvaultadmin
-    secret-key: docvaultadminpassword
-    bucket: docvault
+    url: ${DOCVAULT_MINIO_URL:http://localhost:9000}
+    access-key: ${DOCVAULT_MINIO_ACCESS_KEY:docvaultadmin}
+    secret-key: ${DOCVAULT_MINIO_SECRET_KEY:docvaultadminpassword}
+    bucket: ${DOCVAULT_MINIO_BUCKET:docvault}
   elasticsearch:
-    uris: http://localhost:9200
+    uris: ${DOCVAULT_ELASTICSEARCH_URIS:http://localhost:9200}

@@ -3,21 +3,26 @@ services:
     image: postgres:16-alpine
     container_name: docvault-db
     environment:
-      POSTGRES_USER: docvault
-      POSTGRES_PASSWORD: docvaultpassword
-      POSTGRES_DB: docvault
+      POSTGRES_USER: ${POSTGRES_USER:-docvault}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docvaultpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-docvault}
     ports:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-docvault} -d ${POSTGRES_DB:-docvault}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   minio:
     image: minio/minio:latest
     container_name: docvault-minio
     environment:
-      MINIO_ROOT_USER: docvaultadmin
-      MINIO_ROOT_PASSWORD: docvaultadminpassword
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-docvaultadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-docvaultadminpassword}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -25,6 +30,11 @@ services:
     volumes:
       - minio-data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
@@ -38,6 +48,38 @@ services:
     volumes:
       - es-data:/usr/share/elasticsearch/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: docvault:latest
+    container_name: docvault-app
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-docvault}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-docvault}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-docvaultpassword}
+      DOCVAULT_MINIO_URL: http://minio:9000
+      DOCVAULT_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-docvaultadmin}
+      DOCVAULT_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-docvaultadminpassword}
+      DOCVAULT_MINIO_BUCKET: ${DOCVAULT_MINIO_BUCKET:-docvault}
+      DOCVAULT_ELASTICSEARCH_URIS: http://elasticsearch:9200
+      JWT_SECRET: ${JWT_SECRET:-thisIsADefaultSecretKeyWithAtLeast32Characters}
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
 
 volumes:
   db-data:
