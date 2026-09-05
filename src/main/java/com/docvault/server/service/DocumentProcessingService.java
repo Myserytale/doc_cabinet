@@ -29,15 +29,18 @@ public class DocumentProcessingService {
     private final StorageService storageService;
     private final TextExtractionService textExtractionService;
     private final SearchService searchService;
+    private final CategorizationService categorizationService;
 
     public DocumentProcessingService(DocumentRepository documentRepository,
                                      StorageService storageService,
                                      TextExtractionService textExtractionService,
-                                     SearchService searchService) {
+                                     SearchService searchService,
+                                     CategorizationService categorizationService) {
         this.documentRepository = documentRepository;
         this.storageService = storageService;
         this.textExtractionService = textExtractionService;
         this.searchService = searchService;
+        this.categorizationService = categorizationService;
     }
 
     @Async("documentTaskExecutor")
@@ -73,6 +76,18 @@ public class DocumentProcessingService {
             // Extract text with Apache Tika
             String extractedText = textExtractionService.extractText(tempFile);
 
+            // Auto-categorize document if not already assigned
+            com.docvault.server.model.Category category = document.getCategory();
+            if (category == null) {
+                category = categorizationService.classifyAndAssign(
+                        document.getUser(),
+                        document.getTitle(),
+                        document.getOriginalFilename(),
+                        extractedText
+                );
+                document.setCategory(category);
+            }
+
             // Index into Elasticsearch
             IndexedDocument indexedDoc = new IndexedDocument(
                     document.getId().toString(),
@@ -82,6 +97,8 @@ public class DocumentProcessingService {
                     document.getMimeType(),
                     document.getSizeBytes(),
                     checksum,
+                    category != null ? category.getId().toString() : null,
+                    category != null ? category.getName() : null,
                     extractedText,
                     document.getCreatedAt() != null ? document.getCreatedAt().toInstant() : Instant.now()
             );

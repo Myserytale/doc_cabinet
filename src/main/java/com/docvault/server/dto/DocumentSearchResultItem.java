@@ -11,6 +11,8 @@ public record DocumentSearchResultItem(
         String mimeType,
         Long sizeBytes,
         String checksum,
+        String categoryId,
+        String categoryName,
         Instant createdAt,
         Double score,
         List<String> highlights

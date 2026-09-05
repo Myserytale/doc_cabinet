@@ -9,5 +9,8 @@ import java.util.UUID;
 
 public interface DocumentRepository extends JpaRepository<Document, UUID> {
     List<Document> findByUserId(UUID userId);
+    List<Document> findByUserIdOrderByCreatedAtDesc(UUID userId);
+    List<Document> findByUserIdAndCategoryIdOrderByCreatedAtDesc(UUID userId, UUID categoryId);
     Optional<Document> findByIdAndUserId(UUID id, UUID userId);
+    Optional<Document> findByUserIdAndChecksum(UUID userId, String checksum);
 }
