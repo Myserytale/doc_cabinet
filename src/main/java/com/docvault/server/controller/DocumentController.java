@@ -22,6 +22,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -52,9 +54,24 @@ public class DocumentController {
         return userRepository.findByUsername(username).orElseThrow();
     }
 
+    @GetMapping("/check-checksum")
+    public ResponseEntity<?> checkChecksum(@RequestParam("checksum") String checksum) {
+        User user = getCurrentUser();
+        Optional<Document> existing = documentRepository.findByUserIdAndChecksum(user.getId(), checksum);
+        if (existing.isPresent()) {
+            return ResponseEntity.ok(Map.of(
+                    "exists", true,
+                    "document", DocumentDto.from(existing.get())
+            ));
+        }
+        return ResponseEntity.ok(Map.of("exists", false));
+    }
+
     @PostMapping
     public ResponseEntity<?> uploadDocument(@RequestParam("file") MultipartFile file,
-                                            @RequestParam(value = "title", required = false) String title) {
+                                            @RequestParam(value = "title", required = false) String title,
+                                            @RequestParam(value = "sourcePath", required = false) String sourcePath,
+                                            @RequestParam(value = "checksum", required = false) String checksum) {
         User user = getCurrentUser();
 
         if (file.isEmpty()) {
@@ -77,6 +94,12 @@ public class DocumentController {
             document.setSizeBytes(size);
             document.setStoragePath(objectName);
             document.setStatus("PENDING");
+            if (checksum != null && !checksum.isBlank()) {
+                document.setChecksum(checksum);
+            }
+            if (sourcePath != null && !sourcePath.isBlank()) {
+                document.setSourcePath(sourcePath);
+            }
 
             Document savedDoc = documentRepository.save(document);
 
@@ -91,9 +114,15 @@ public class DocumentController {
     }
 
     @GetMapping
-    public ResponseEntity<List<DocumentDto>> listDocuments() {
+    public ResponseEntity<List<DocumentDto>> listDocuments(
+            @RequestParam(value = "categoryId", required = false) UUID categoryId) {
         User user = getCurrentUser();
-        List<Document> docs = documentRepository.findByUserId(user.getId());
+        List<Document> docs;
+        if (categoryId != null) {
+            docs = documentRepository.findByUserIdAndCategoryIdOrderByCreatedAtDesc(user.getId(), categoryId);
+        } else {
+            docs = documentRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
+        }
         List<DocumentDto> dtos = docs.stream().map(DocumentDto::from).toList();
         return ResponseEntity.ok(dtos);
     }
@@ -109,10 +138,11 @@ public class DocumentController {
     @GetMapping("/search")
     public ResponseEntity<DocumentSearchResponse> searchDocuments(
             @RequestParam(value = "q", required = false) String query,
+            @RequestParam(value = "categoryId", required = false) UUID categoryId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
         User user = getCurrentUser();
-        DocumentSearchResponse results = searchService.searchDocuments(user.getId(), query, page, size);
+        DocumentSearchResponse results = searchService.searchDocuments(user.getId(), query, categoryId, page, size);
         return ResponseEntity.ok(results);
     }
 

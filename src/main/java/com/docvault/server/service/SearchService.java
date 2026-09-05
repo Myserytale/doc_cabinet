@@ -49,6 +49,8 @@ public class SearchService {
                                 .properties("mimeType", p -> p.keyword(k -> k))
                                 .properties("sizeBytes", p -> p.long_(l -> l))
                                 .properties("checksum", p -> p.keyword(k -> k))
+                                .properties("categoryId", p -> p.keyword(k -> k))
+                                .properties("categoryName", p -> p.keyword(k -> k))
                                 .properties("content", p -> p.text(t -> t))
                                 .properties("createdAt", p -> p.date(d -> d))
                         )
@@ -91,6 +93,10 @@ public class SearchService {
     }
 
     public DocumentSearchResponse searchDocuments(UUID userId, String query, int page, int size) {
+        return searchDocuments(userId, query, null, page, size);
+    }
+
+    public DocumentSearchResponse searchDocuments(UUID userId, String query, UUID categoryId, int page, int size) {
         try {
             int validPage = Math.max(0, page);
             int validSize = Math.max(1, size);
@@ -103,6 +109,9 @@ public class SearchService {
                     .query(q -> q
                             .bool(b -> {
                                 b.filter(f -> f.term(t -> t.field("userId").value(userId.toString())));
+                                if (categoryId != null) {
+                                    b.filter(f -> f.term(t -> t.field("categoryId").value(categoryId.toString())));
+                                }
                                 if (query != null && !query.trim().isEmpty()) {
                                     b.must(m -> m.multiMatch(mm -> mm
                                             .query(query.trim())
@@ -142,6 +151,8 @@ public class SearchService {
                         source.getMimeType(),
                         source.getSizeBytes(),
                         source.getChecksum(),
+                        source.getCategoryId(),
+                        source.getCategoryName(),
                         source.getCreatedAt(),
                         hit.score(),
                         highlights

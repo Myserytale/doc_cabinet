@@ -5,7 +5,6 @@ import com.docvault.server.dto.AuthResponse;
 import com.docvault.server.dto.RegisterRequest;
 import com.docvault.server.model.Document;
 import com.docvault.server.repository.DocumentRepository;
-import com.docvault.server.service.DocumentProcessingService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,9 +38,6 @@ class DocumentIntegrationTest {
 
     @Autowired
     private DocumentRepository documentRepository;
-
-    @Autowired
-    private DocumentProcessingService documentProcessingService;
 
     @BeforeEach
     void setUp() {
@@ -102,20 +98,48 @@ class DocumentIntegrationTest {
         UUID documentId = UUID.fromString(uploadJson.get("id").asText());
         assertEquals("PENDING", uploadJson.get("status").asText());
 
-        // 2. Synchronously run processing for test certainty
-        documentProcessingService.processDocument(documentId);
+        // 2. Wait for async processing to complete
+        Document updatedDoc = null;
+        for (int i = 0; i < 40; i++) {
+            updatedDoc = documentRepository.findById(documentId).orElse(null);
+            if (updatedDoc != null && ("INDEXED".equals(updatedDoc.getStatus()) || "FAILED".equals(updatedDoc.getStatus()))) {
+                break;
+            }
+            Thread.sleep(250);
+        }
 
         // 3. Verify PostgreSQL document record updated
-        Document updatedDoc = documentRepository.findById(documentId).orElseThrow();
+        assertNotNull(updatedDoc);
         assertEquals("INDEXED", updatedDoc.getStatus());
         assertNotNull(updatedDoc.getChecksum());
         assertEquals(64, updatedDoc.getChecksum().length(), "SHA-256 checksum must be 64 hex characters");
         assertNull(updatedDoc.getErrorMessage());
+        assertNotNull(updatedDoc.getCategory(), "Document should be auto-categorized");
+        assertEquals("Finance", updatedDoc.getCategory().getName());
+
+        // 4. Test pre-flight checksum check
+        MvcResult checkResult = mockMvc.perform(get("/api/documents/check-checksum")
+                        .param("checksum", updatedDoc.getChecksum())
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode checkJson = objectMapper.readTree(checkResult.getResponse().getContentAsString());
+        assertTrue(checkJson.get("exists").asBoolean());
+        assertEquals(documentId.toString(), checkJson.get("document").get("id").asText());
+
+        // 5. Test categories listing
+        MvcResult catResult = mockMvc.perform(get("/api/categories")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode catJson = objectMapper.readTree(catResult.getResponse().getContentAsString());
+        assertTrue(catJson.size() > 0);
+        assertEquals("Finance", catJson.get(0).get("name").asText());
 
         // Wait a brief moment for Elasticsearch index refresh if needed
-        Thread.sleep(1500);
+        Thread.sleep(1000);
 
-        // 4. Alice searches for "revenue projections"
+        // 6. Alice searches for "revenue projections"
         MvcResult searchResultAlice = mockMvc.perform(get("/api/documents/search")
                         .param("q", "revenue projections")
                         .header("Authorization", "Bearer " + aliceToken))
@@ -127,11 +151,12 @@ class DocumentIntegrationTest {
         JsonNode firstHit = searchJsonAlice.get("items").get(0);
         assertEquals(documentId.toString(), firstHit.get("id").asText());
         assertEquals("Q3 Financial Report", firstHit.get("title").asText());
+        assertEquals("Finance", firstHit.get("categoryName").asText());
         assertTrue(firstHit.get("highlights").size() > 0, "Should contain highlight snippets");
         String highlightSnippet = firstHit.get("highlights").get(0).asText();
         assertTrue(highlightSnippet.contains("<mark>"), "Highlight should contain mark tag");
 
-        // 5. Bob searches for "revenue projections" -> Must return 0 hits (Multi-tenant security)
+        // 7. Bob searches for "revenue projections" -> Must return 0 hits (Multi-tenant security)
         MvcResult searchResultBob = mockMvc.perform(get("/api/documents/search")
                         .param("q", "revenue projections")
                         .header("Authorization", "Bearer " + bobToken))
@@ -141,7 +166,7 @@ class DocumentIntegrationTest {
         JsonNode searchJsonBob = objectMapper.readTree(searchResultBob.getResponse().getContentAsString());
         assertEquals(0, searchJsonBob.get("totalHits").asLong(), "Bob must NOT see Alice's document");
 
-        // 6. Alice downloads document
+        // 8. Alice downloads document
         MvcResult downloadResult = mockMvc.perform(get("/api/documents/" + documentId + "/download")
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
@@ -150,7 +175,7 @@ class DocumentIntegrationTest {
 
         assertEquals(fileContent, downloadResult.getResponse().getContentAsString());
 
-        // 7. Alice deletes document
+        // 9. Alice deletes document
         mockMvc.perform(delete("/api/documents/" + documentId)
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isNoContent());
@@ -159,7 +184,7 @@ class DocumentIntegrationTest {
         assertFalse(documentRepository.findById(documentId).isPresent());
 
         // Wait for ES refresh
-        Thread.sleep(1500);
+        Thread.sleep(1000);
 
         // Verify removed from search
         MvcResult searchAfterDelete = mockMvc.perform(get("/api/documents/search")

@@ -13,6 +13,8 @@ public class IndexedDocument {
     private String mimeType;
     private Long sizeBytes;
     private String checksum;
+    private String categoryId;
+    private String categoryName;
     private String content;
     private Instant createdAt;
 
@@ -20,6 +22,7 @@ public class IndexedDocument {
 
     public IndexedDocument(String id, String userId, String title, String originalFilename,
                            String mimeType, Long sizeBytes, String checksum,
+                           String categoryId, String categoryName,
                            String content, Instant createdAt) {
         this.id = id;
         this.userId = userId;
@@ -28,6 +31,8 @@ public class IndexedDocument {
         this.mimeType = mimeType;
         this.sizeBytes = sizeBytes;
         this.checksum = checksum;
+        this.categoryId = categoryId;
+        this.categoryName = categoryName;
         this.content = content;
         this.createdAt = createdAt;
     }
@@ -52,6 +57,12 @@ public class IndexedDocument {
 
     public String getChecksum() { return checksum; }
     public void setChecksum(String checksum) { this.checksum = checksum; }
+
+    public String getCategoryId() { return categoryId; }
+    public void setCategoryId(String categoryId) { this.categoryId = categoryId; }
+
+    public String getCategoryName() { return categoryName; }
+    public void setCategoryName(String categoryName) { this.categoryName = categoryName; }
 
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }

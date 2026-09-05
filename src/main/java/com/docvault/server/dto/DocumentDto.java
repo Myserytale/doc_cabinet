@@ -15,10 +15,18 @@ public record DocumentDto(
         String checksum,
         String status,
         String errorMessage,
+        UUID categoryId,
+        String categoryName,
+        String categoryColor,
+        String sourcePath,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {
     public static DocumentDto from(Document doc) {
+        UUID catId = doc.getCategory() != null ? doc.getCategory().getId() : null;
+        String catName = doc.getCategory() != null ? doc.getCategory().getName() : null;
+        String catColor = doc.getCategory() != null ? doc.getCategory().getColor() : null;
+
         return new DocumentDto(
                 doc.getId(),
                 doc.getTitle(),
@@ -29,6 +37,10 @@ public record DocumentDto(
                 doc.getChecksum(),
                 doc.getStatus(),
                 doc.getErrorMessage(),
+                catId,
+                catName,
+                catColor,
+                doc.getSourcePath(),
                 doc.getCreatedAt(),
                 doc.getUpdatedAt()
         );
