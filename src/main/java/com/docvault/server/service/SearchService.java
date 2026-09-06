@@ -61,6 +61,14 @@ public class SearchService {
             } else {
                 log.info("Elasticsearch index '{}' already exists", INDEX_NAME);
             }
+            try {
+                elasticsearchClient.indices().putSettings(p -> p
+                        .index(INDEX_NAME)
+                        .settings(s -> s.highlight(h -> h.maxAnalyzedOffset(10_000_000)))
+                );
+            } catch (Exception e) {
+                log.warn("Could not update highlight.max_analyzed_offset setting: {}", e.getMessage());
+            }
         } catch (Exception e) {
             log.error("Could not verify or create Elasticsearch index '{}': {}", INDEX_NAME, e.getMessage());
         }
@@ -146,6 +154,7 @@ public class SearchService {
                             })
                     )
                     .highlight(h -> h
+                            .maxAnalyzedOffset(10_000_000)
                             .preTags("<mark>")
                             .postTags("</mark>")
                             .fields("content", hf -> hf.numberOfFragments(3).fragmentSize(150))

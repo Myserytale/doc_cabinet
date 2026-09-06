@@ -187,7 +187,17 @@ export const api = {
     params.set('size', size);
 
     const res = await request(`/api/documents/search?${params.toString()}`);
-    if (!res.ok) throw new Error('Search request failed');
+    if (!res.ok) {
+      let errMsg = 'Search request failed';
+      try {
+        const data = await res.json();
+        errMsg = data.error || data.message || errMsg;
+      } catch {
+        const text = await res.text();
+        if (text) errMsg = text;
+      }
+      throw new Error(errMsg);
+    }
     return res.json();
   },
 
