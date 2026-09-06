@@ -12,7 +12,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -76,6 +78,25 @@ public class SearchService {
         } catch (Exception e) {
             log.error("Failed to index document {}: {}", doc.getId(), e.getMessage(), e);
             throw new RuntimeException("Elasticsearch indexing failed: " + e.getMessage(), e);
+        }
+    }
+
+    public void updateDocumentCategory(String documentId, String categoryId, String categoryName) {
+        try {
+            Map<String, Object> doc = new HashMap<>();
+            doc.put("categoryId", categoryId);
+            doc.put("categoryName", categoryName);
+
+            elasticsearchClient.update(u -> u
+                    .index(INDEX_NAME)
+                    .id(documentId)
+                    .doc(doc)
+                    .refresh(co.elastic.clients.elasticsearch._types.Refresh.True),
+                    Map.class
+            );
+            log.info("Updated category for document {} in Elasticsearch to {}", documentId, categoryName);
+        } catch (Exception e) {
+            log.warn("Could not update document category in Elasticsearch for id {}: {}", documentId, e.getMessage());
         }
     }
 

@@ -2,8 +2,10 @@ package com.docvault.server.controller;
 
 import com.docvault.server.dto.DocumentDto;
 import com.docvault.server.dto.DocumentSearchResponse;
+import com.docvault.server.model.Category;
 import com.docvault.server.model.Document;
 import com.docvault.server.model.User;
+import com.docvault.server.repository.CategoryRepository;
 import com.docvault.server.repository.DocumentRepository;
 import com.docvault.server.repository.UserRepository;
 import com.docvault.server.service.DocumentProcessingService;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,17 +34,20 @@ import java.util.UUID;
 public class DocumentController {
 
     private final DocumentRepository documentRepository;
+    private final CategoryRepository categoryRepository;
     private final StorageService storageService;
     private final UserRepository userRepository;
     private final DocumentProcessingService documentProcessingService;
     private final SearchService searchService;
 
     public DocumentController(DocumentRepository documentRepository,
+                              CategoryRepository categoryRepository,
                               StorageService storageService,
                               UserRepository userRepository,
                               DocumentProcessingService documentProcessingService,
                               SearchService searchService) {
         this.documentRepository = documentRepository;
+        this.categoryRepository = categoryRepository;
         this.storageService = storageService;
         this.userRepository = userRepository;
         this.documentProcessingService = documentProcessingService;
@@ -115,11 +121,16 @@ public class DocumentController {
 
     @GetMapping
     public ResponseEntity<List<DocumentDto>> listDocuments(
-            @RequestParam(value = "categoryId", required = false) UUID categoryId) {
+            @RequestParam(value = "categoryId", required = false) UUID categoryId,
+            @RequestParam(value = "sourcePathPrefix", required = false) String sourcePathPrefix) {
         User user = getCurrentUser();
         List<Document> docs;
-        if (categoryId != null) {
+        if (categoryId != null && sourcePathPrefix != null && !sourcePathPrefix.isBlank()) {
+            docs = documentRepository.findByUserIdAndCategoryIdAndSourcePathStartingWithOrderByCreatedAtDesc(user.getId(), categoryId, sourcePathPrefix);
+        } else if (categoryId != null) {
             docs = documentRepository.findByUserIdAndCategoryIdOrderByCreatedAtDesc(user.getId(), categoryId);
+        } else if (sourcePathPrefix != null && !sourcePathPrefix.isBlank()) {
+            docs = documentRepository.findByUserIdAndSourcePathStartingWithOrderByCreatedAtDesc(user.getId(), sourcePathPrefix);
         } else {
             docs = documentRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
         }
@@ -189,6 +200,104 @@ public class DocumentController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error deleting file: " + e.getMessage());
         }
+    }
+
+    public record UpdateCategoryRequest(UUID categoryId) {}
+
+    @PutMapping("/{id}/category")
+    public ResponseEntity<?> updateCategory(@PathVariable UUID id, @RequestBody(required = false) UpdateCategoryRequest request) {
+        User user = getCurrentUser();
+        Document document = documentRepository.findByIdAndUserId(id, user.getId()).orElse(null);
+        if (document == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Category category = null;
+        if (request != null && request.categoryId() != null) {
+            Optional<Category> catOpt = categoryRepository.findByIdAndUserId(request.categoryId(), user.getId());
+            if (catOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body("Category not found");
+            }
+            category = catOpt.get();
+        }
+
+        document.setCategory(category);
+        document.setUpdatedAt(OffsetDateTime.now());
+        Document saved = documentRepository.save(document);
+
+        searchService.updateDocumentCategory(
+                saved.getId().toString(),
+                category != null ? category.getId().toString() : null,
+                category != null ? category.getName() : null
+        );
+
+        return ResponseEntity.ok(DocumentDto.from(saved));
+    }
+
+    public record BulkCategoryRequest(List<UUID> documentIds, UUID categoryId) {}
+
+    @PostMapping("/bulk-category")
+    public ResponseEntity<?> bulkCategory(@RequestBody BulkCategoryRequest request) {
+        User user = getCurrentUser();
+        if (request == null || request.documentIds() == null || request.documentIds().isEmpty()) {
+            return ResponseEntity.badRequest().body("documentIds cannot be empty");
+        }
+
+        Category category = null;
+        if (request.categoryId() != null) {
+            Optional<Category> catOpt = categoryRepository.findByIdAndUserId(request.categoryId(), user.getId());
+            if (catOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body("Category not found");
+            }
+            category = catOpt.get();
+        }
+
+        int updated = 0;
+        for (UUID docId : request.documentIds()) {
+            Optional<Document> docOpt = documentRepository.findByIdAndUserId(docId, user.getId());
+            if (docOpt.isPresent()) {
+                Document doc = docOpt.get();
+                doc.setCategory(category);
+                doc.setUpdatedAt(OffsetDateTime.now());
+                documentRepository.save(doc);
+                searchService.updateDocumentCategory(
+                        doc.getId().toString(),
+                        category != null ? category.getId().toString() : null,
+                        category != null ? category.getName() : null
+                );
+                updated++;
+            }
+        }
+
+        return ResponseEntity.ok(Map.of("updated", updated));
+    }
+
+    public record BulkDeleteRequest(List<UUID> documentIds) {}
+
+    @PostMapping("/bulk-delete")
+    public ResponseEntity<?> bulkDelete(@RequestBody BulkDeleteRequest request) {
+        User user = getCurrentUser();
+        if (request == null || request.documentIds() == null || request.documentIds().isEmpty()) {
+            return ResponseEntity.badRequest().body("documentIds cannot be empty");
+        }
+
+        int deleted = 0;
+        for (UUID docId : request.documentIds()) {
+            Optional<Document> docOpt = documentRepository.findByIdAndUserId(docId, user.getId());
+            if (docOpt.isPresent()) {
+                Document doc = docOpt.get();
+                try {
+                    storageService.deleteFile(doc.getStoragePath());
+                    searchService.deleteDocument(doc.getId().toString());
+                    documentRepository.delete(doc);
+                    deleted++;
+                } catch (Exception e) {
+                    // ignore individual deletion errors to proceed with bulk
+                }
+            }
+        }
+
+        return ResponseEntity.ok(Map.of("deleted", deleted));
     }
 
     @PostMapping("/{id}/reindex")
