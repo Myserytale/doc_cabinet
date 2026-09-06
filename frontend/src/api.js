@@ -88,9 +88,88 @@ export const api = {
     clearAuthSession();
   },
 
-  async listDocuments() {
-    const res = await request('/api/documents');
+  async listDocuments(categoryId = null, sourcePathPrefix = null) {
+    const params = new URLSearchParams();
+    if (categoryId) params.set('categoryId', categoryId);
+    if (sourcePathPrefix) params.set('sourcePathPrefix', sourcePathPrefix);
+    const qs = params.toString();
+    const res = await request(`/api/documents${qs ? '?' + qs : ''}`);
     if (!res.ok) throw new Error('Failed to load documents');
+    return res.json();
+  },
+
+  async getFolders() {
+    const res = await request('/api/documents/folders');
+    if (!res.ok) throw new Error('Failed to load folders');
+    return res.json();
+  },
+
+  async getCategories() {
+    const res = await request('/api/categories');
+    if (!res.ok) throw new Error('Failed to load categories');
+    return res.json();
+  },
+
+  async createCategory(name, color = '#6366f1') {
+    const res = await request('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || 'Failed to create category');
+    }
+    return res.json();
+  },
+
+  async deleteCategory(id) {
+    const res = await request(`/api/categories/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok && res.status !== 204) {
+      const err = await res.text();
+      throw new Error(err || 'Failed to delete category');
+    }
+    return true;
+  },
+
+  async updateDocumentCategory(documentId, categoryId = null) {
+    const res = await request(`/api/documents/${documentId}/category`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ categoryId }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || 'Failed to update category');
+    }
+    return res.json();
+  },
+
+  async bulkSetCategory(documentIds, categoryId = null) {
+    const res = await request('/api/documents/bulk-category', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentIds, categoryId }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || 'Bulk category assignment failed');
+    }
+    return res.json();
+  },
+
+  async bulkDelete(documentIds) {
+    const res = await request('/api/documents/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentIds }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || 'Bulk delete failed');
+    }
     return res.json();
   },
 
@@ -100,9 +179,10 @@ export const api = {
     return res.json();
   },
 
-  async searchDocuments(query, page = 0, size = 20) {
+  async searchDocuments(query, categoryId = null, page = 0, size = 20) {
     const params = new URLSearchParams();
     if (query) params.set('q', query);
+    if (categoryId) params.set('categoryId', categoryId);
     params.set('page', page);
     params.set('size', size);
 

@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { X, Download, RefreshCw, Trash2, Copy, Check, FileText, HardDrive, Calendar, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { formatBytes, formatDate, getFileTypeBadge } from '../utils';
 
-export function DocumentDetailModal({ doc, isOpen, onClose, onDownload, onReindex, onDelete }) {
+export function DocumentDetailModal({ doc, categories = [], isOpen, onClose, onDownload, onReindex, onDelete, onUpdateCategory }) {
   const [copied, setCopied] = useState(false);
   const [reindexing, setReindexing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [updatingCategory, setUpdatingCategory] = useState(false);
 
   if (!isOpen || !doc) return null;
 
@@ -16,6 +17,18 @@ export function DocumentDetailModal({ doc, isOpen, onClose, onDownload, onReinde
       navigator.clipboard.writeText(doc.checksum);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  async function handleCategoryChange(e) {
+    const val = e.target.value || null;
+    setUpdatingCategory(true);
+    try {
+      if (onUpdateCategory) {
+        await onUpdateCategory(doc.id, val);
+      }
+    } finally {
+      setUpdatingCategory(false);
     }
   }
 
@@ -53,7 +66,7 @@ export function DocumentDetailModal({ doc, isOpen, onClose, onDownload, onReinde
               <h3 className="font-bold text-white text-lg tracking-tight leading-snug">
                 {doc.title || doc.originalFilename}
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">{doc.originalFilename}</p>
+              <p className="text-xs text-slate-400 mt-0.5 font-mono">{doc.originalFilename}</p>
             </div>
           </div>
           <button
@@ -66,35 +79,72 @@ export function DocumentDetailModal({ doc, isOpen, onClose, onDownload, onReinde
 
         {/* Content */}
         <div className="p-6 space-y-5 text-sm">
-          {/* Status banner */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-xs text-slate-400 font-medium">Processing Status</span>
-            <div className="flex items-center gap-1.5">
-              {doc.status === 'INDEXED' && (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Indexed & Searchable
-                </span>
-              )}
-              {doc.status === 'PROCESSING' && (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  Extracting Text...
-                </span>
-              )}
-              {doc.status === 'PENDING' && (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                  Queued
-                </span>
-              )}
-              {doc.status === 'FAILED' && (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  Failed
-                </span>
-              )}
+          {/* Status & Category row */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs text-slate-400 font-medium">Category</span>
+                {updatingCategory && (
+                  <span className="text-[10px] text-indigo-400 flex items-center">
+                    <RefreshCw className="w-2.5 h-2.5 animate-spin mr-1" />
+                    Saving...
+                  </span>
+                )}
+              </div>
+              <select
+                value={doc.categoryId || ''}
+                disabled={updatingCategory}
+                onChange={handleCategoryChange}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">(Uncategorized)</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <span className="text-xs text-slate-400 font-medium block mb-1.5">Processing Status</span>
+              <div className="flex items-center gap-1.5 h-6">
+                {doc.status === 'INDEXED' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Indexed
+                  </span>
+                )}
+                {doc.status === 'PROCESSING' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Extracting...
+                  </span>
+                )}
+                {doc.status === 'PENDING' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    Queued
+                  </span>
+                )}
+                {doc.status === 'FAILED' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Failed
+                  </span>
+                )}
+              </div>
             </div>
           </div>
+
+          {/* Local Source Path */}
+          {doc.sourcePath && (
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
+              <span className="text-xs text-slate-400 font-medium block mb-1">Source Path</span>
+              <p className="font-mono text-xs text-indigo-300 break-all bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                {doc.sourcePath}
+              </p>
+            </div>
+          )}
 
           {/* Failure Alert */}
           {doc.errorMessage && (
@@ -111,7 +161,7 @@ export function DocumentDetailModal({ doc, isOpen, onClose, onDownload, onReinde
                 <HardDrive className="w-3.5 h-3.5" />
                 <span>File Size</span>
               </div>
-              <p className="font-semibold text-white">{formatBytes(doc.sizeBytes)}</p>
+              <p className="font-semibold text-white font-mono">{formatBytes(doc.sizeBytes)}</p>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
@@ -127,7 +177,7 @@ export function DocumentDetailModal({ doc, isOpen, onClose, onDownload, onReinde
                 <Calendar className="w-3.5 h-3.5" />
                 <span>Uploaded At</span>
               </div>
-              <p className="text-xs text-slate-200">{formatDate(doc.createdAt)}</p>
+              <p className="text-xs text-slate-200 font-mono">{formatDate(doc.createdAt)}</p>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
@@ -135,7 +185,7 @@ export function DocumentDetailModal({ doc, isOpen, onClose, onDownload, onReinde
                 <Calendar className="w-3.5 h-3.5" />
                 <span>Last Updated</span>
               </div>
-              <p className="text-xs text-slate-200">{formatDate(doc.updatedAt || doc.createdAt)}</p>
+              <p className="text-xs text-slate-200 font-mono">{formatDate(doc.updatedAt || doc.createdAt)}</p>
             </div>
           </div>
 

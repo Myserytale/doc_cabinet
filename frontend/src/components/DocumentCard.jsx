@@ -1,21 +1,53 @@
 import React from 'react';
-import { Download, Trash2, Eye, ShieldCheck, RefreshCw, AlertTriangle, Clock } from 'lucide-react';
+import { Download, Trash2, Eye, ShieldCheck, RefreshCw, AlertTriangle, Clock, Folder, CheckSquare, Square } from 'lucide-react';
 import { formatBytes, formatDate, getFileTypeBadge } from '../utils';
 
-export function DocumentCard({ doc, onSelect, onDownload, onDelete }) {
+export function DocumentCard({ doc, isSelected = false, onToggleSelect, onSelect, onDownload, onDelete }) {
   const badge = getFileTypeBadge(doc.mimeType, doc.originalFilename);
+
+  const getFolderDisplay = (path) => {
+    if (!path) return null;
+    const parts = path.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      return parts[parts.length - 2];
+    }
+    return parts[0] || path;
+  };
+
+  const folderName = getFolderDisplay(doc.sourcePath);
 
   return (
     <div
       onClick={() => onSelect(doc)}
-      className="group relative bg-slate-900/80 hover:bg-slate-900 border border-slate-800/80 hover:border-slate-700 rounded-xl p-4 transition duration-200 cursor-pointer shadow-sm hover:shadow-xl hover:shadow-slate-950/50 flex flex-col justify-between"
+      className={`group relative rounded-xl p-4 transition duration-150 cursor-pointer shadow-sm hover:shadow-xl flex flex-col justify-between border ${
+        isSelected
+          ? 'bg-indigo-950/30 border-indigo-500/80 shadow-indigo-950/40'
+          : 'bg-slate-900/80 hover:bg-slate-900 border-slate-800/80 hover:border-slate-700'
+      }`}
     >
       <div>
-        {/* Top bar: Badge & Status */}
+        {/* Top bar: Checkbox, Badge & Status */}
         <div className="flex items-center justify-between gap-2 mb-3">
-          <span className={`px-2 py-0.5 rounded text-[11px] font-bold border tracking-wider ${badge.bg} ${badge.text} ${badge.border}`}>
-            {badge.label}
-          </span>
+          <div className="flex items-center gap-2">
+            {onToggleSelect && (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSelect(doc.id);
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                {isSelected ? (
+                  <CheckSquare className="w-4 h-4 text-indigo-400" />
+                ) : (
+                  <Square className="w-4 h-4 text-slate-600 group-hover:text-slate-400" />
+                )}
+              </div>
+            )}
+            <span className={`px-2 py-0.5 rounded text-[11px] font-bold border tracking-wider ${badge.bg} ${badge.text} ${badge.border}`}>
+              {badge.label}
+            </span>
+          </div>
 
           <div>
             {doc.status === 'INDEXED' && (
@@ -46,17 +78,43 @@ export function DocumentCard({ doc, onSelect, onDownload, onDelete }) {
         </div>
 
         {/* Title and Original Filename */}
-        <h4 className="font-semibold text-white text-sm tracking-tight group-hover:text-indigo-400 transition truncate" title={doc.title || doc.originalFilename}>
+        <h4 className="font-semibold text-white text-sm tracking-tight group-hover:text-indigo-300 transition truncate" title={doc.title || doc.originalFilename}>
           {doc.title || doc.originalFilename}
         </h4>
         <p className="text-xs text-slate-400 truncate mt-0.5 font-mono">
           {doc.originalFilename}
         </p>
+
+        {/* Category & Folder Badges */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+          {doc.categoryName && (
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium"
+              style={{
+                backgroundColor: `${doc.categoryColor || '#6366f1'}20`,
+                color: doc.categoryColor || '#a5b4fc',
+                border: `1px solid ${doc.categoryColor || '#6366f1'}40`
+              }}
+            >
+              {doc.categoryName}
+            </span>
+          )}
+
+          {folderName && (
+            <span
+              title={doc.sourcePath}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-slate-950 text-slate-400 border border-slate-800 font-mono truncate max-w-[160px]"
+            >
+              <Folder className="w-3 h-3 shrink-0 text-slate-500" />
+              <span className="truncate">{folderName}</span>
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Footer Info & Quick Actions */}
       <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 font-mono text-[11px]">
           <span>{formatBytes(doc.sizeBytes)}</span>
           <span>•</span>
           <span>{formatDate(doc.createdAt)}</span>

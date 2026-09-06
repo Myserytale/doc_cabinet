@@ -24,10 +24,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -119,13 +116,108 @@ public class DocumentController {
         }
     }
 
+    public record FolderDto(String name, String pathPrefix, long documentCount) {}
+
+    @GetMapping("/folders")
+    public ResponseEntity<List<FolderDto>> getFolders() {
+        User user = getCurrentUser();
+        List<Document> docs = documentRepository.findByUserId(user.getId());
+
+        List<String> paths = docs.stream()
+                .map(Document::getSourcePath)
+                .filter(p -> p != null && !p.isBlank())
+                .toList();
+
+        long webUploadsCount = documentRepository.countByUserIdAndSourcePathIsNull(user.getId());
+        if (paths.isEmpty()) {
+            if (webUploadsCount > 0) {
+                return ResponseEntity.ok(List.of(new FolderDto("Web Uploads", "__WEB_UPLOADS__", webUploadsCount)));
+            }
+            return ResponseEntity.ok(List.of());
+        }
+
+        String commonPrefix = findCommonPrefix(paths);
+        Map<String, FolderAccumulator> folderMap = new LinkedHashMap<>();
+
+        for (Document doc : docs) {
+            String sp = doc.getSourcePath();
+            if (sp == null || sp.isBlank()) {
+                continue;
+            }
+
+            String rel = (commonPrefix != null && !commonPrefix.isEmpty() && sp.startsWith(commonPrefix))
+                    ? sp.substring(commonPrefix.length())
+                    : sp;
+            while (rel.startsWith("/")) rel = rel.substring(1);
+
+            int slashIndex = rel.indexOf('/');
+            String topFolder = slashIndex > 0 ? rel.substring(0, slashIndex) : (rel.isEmpty() ? "Root" : rel);
+            String folderPrefix = (commonPrefix != null && !commonPrefix.isEmpty())
+                    ? (commonPrefix.endsWith("/") ? commonPrefix + topFolder : commonPrefix + "/" + topFolder)
+                    : "/" + topFolder;
+
+            folderMap.computeIfAbsent(topFolder, k -> new FolderAccumulator(k, folderPrefix)).increment();
+        }
+
+        List<FolderDto> result = new ArrayList<>();
+        for (FolderAccumulator acc : folderMap.values()) {
+            result.add(new FolderDto(acc.name, acc.pathPrefix, acc.count));
+        }
+
+        if (webUploadsCount > 0) {
+            result.add(new FolderDto("Web Uploads", "__WEB_UPLOADS__", webUploadsCount));
+        }
+
+        return ResponseEntity.ok(result);
+    }
+
+    private static class FolderAccumulator {
+        final String name;
+        final String pathPrefix;
+        long count = 0;
+
+        FolderAccumulator(String name, String pathPrefix) {
+            this.name = name;
+            this.pathPrefix = pathPrefix;
+        }
+
+        void increment() { this.count++; }
+    }
+
+    private String findCommonPrefix(List<String> paths) {
+        if (paths == null || paths.isEmpty()) return "";
+        String prefix = paths.get(0);
+        int lastSlash = prefix.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            prefix = prefix.substring(0, lastSlash);
+        }
+        for (String p : paths) {
+            while (!p.startsWith(prefix) && !prefix.isEmpty()) {
+                int prevSlash = prefix.lastIndexOf('/');
+                if (prevSlash <= 0) {
+                    prefix = "";
+                    break;
+                }
+                prefix = prefix.substring(0, prevSlash);
+            }
+        }
+        return prefix;
+    }
+
     @GetMapping
     public ResponseEntity<List<DocumentDto>> listDocuments(
             @RequestParam(value = "categoryId", required = false) UUID categoryId,
             @RequestParam(value = "sourcePathPrefix", required = false) String sourcePathPrefix) {
         User user = getCurrentUser();
         List<Document> docs;
-        if (categoryId != null && sourcePathPrefix != null && !sourcePathPrefix.isBlank()) {
+
+        if ("__WEB_UPLOADS__".equals(sourcePathPrefix)) {
+            if (categoryId != null) {
+                docs = documentRepository.findByUserIdAndCategoryIdAndSourcePathIsNullOrderByCreatedAtDesc(user.getId(), categoryId);
+            } else {
+                docs = documentRepository.findByUserIdAndSourcePathIsNullOrderByCreatedAtDesc(user.getId());
+            }
+        } else if (categoryId != null && sourcePathPrefix != null && !sourcePathPrefix.isBlank()) {
             docs = documentRepository.findByUserIdAndCategoryIdAndSourcePathStartingWithOrderByCreatedAtDesc(user.getId(), categoryId, sourcePathPrefix);
         } else if (categoryId != null) {
             docs = documentRepository.findByUserIdAndCategoryIdOrderByCreatedAtDesc(user.getId(), categoryId);
