@@ -18,9 +18,12 @@ import java.util.function.Function;
 public class JwtUtil {
 
     private final SecretKey key;
+    private final long expirationMs;
 
-    public JwtUtil(@Value("${jwt.secret:thisIsADefaultSecretKeyWithAtLeast32Characters}") String secret) {
+    public JwtUtil(@Value("${jwt.secret:thisIsADefaultSecretKeyWithAtLeast32Characters}") String secret,
+                   @Value("${jwt.expiration:2592000000}") long expirationMs) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.expirationMs = expirationMs;
     }
 
     public String extractUsername(String token) {
@@ -58,7 +61,7 @@ public class JwtUtil {
                 .claims(claims)
                 .subject(subject)
                 .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 24)) // 24 hours
+                .expiration(new Date(System.currentTimeMillis() + expirationMs)) // Default 30 days
                 .signWith(key)
                 .compact();
     }
