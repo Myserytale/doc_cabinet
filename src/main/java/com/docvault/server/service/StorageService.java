@@ -1,86 +1,81 @@
 package com.docvault.server.service;
 
-import io.minio.BucketExistsArgs;
-import io.minio.MakeBucketArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.GetObjectArgs;
-import io.minio.RemoveObjectArgs;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
 @Service
 public class StorageService {
 
-    private final MinioClient minioClient;
-    private final String bucketName;
+    private final Path storageDirectory;
 
-    public StorageService(
-            @Value("${docvault.minio.url}") String url,
-            @Value("${docvault.minio.access-key}") String accessKey,
-            @Value("${docvault.minio.secret-key}") String secretKey,
-            @Value("${docvault.minio.bucket}") String bucketName) {
-        
-        this.minioClient = MinioClient.builder()
-                .endpoint(url)
-                .credentials(accessKey, secretKey)
-                .build();
-        this.bucketName = bucketName;
+    public StorageService(@Value("${docvault.storage.location:./data/storage}") String storageLocation) {
+        this.storageDirectory = Paths.get(storageLocation).toAbsolutePath().normalize();
     }
 
     @PostConstruct
     public void init() {
         try {
-            boolean found = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
-            if (!found) {
-                minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Error initializing Minio", e);
+            Files.createDirectories(storageDirectory);
+        } catch (IOException e) {
+            throw new RuntimeException("Error initializing storage directory: " + storageDirectory, e);
         }
     }
 
     public String storeFile(UUID userId, String originalFilename, InputStream stream, String contentType) {
-        String objectName = userId.toString() + "/" + UUID.randomUUID().toString() + "-" + originalFilename;
+        String sanitizedFilename = (originalFilename != null && !originalFilename.isBlank())
+                ? Paths.get(originalFilename).getFileName().toString()
+                : "file";
+        String objectName = userId.toString() + "/" + UUID.randomUUID() + "-" + sanitizedFilename;
+        Path targetPath = resolveAndVerify(objectName);
+
         try {
-            minioClient.putObject(
-                PutObjectArgs.builder()
-                    .bucket(bucketName)
-                    .object(objectName)
-                    .stream(stream, -1, 10485760) // Part size 10MB
-                    .contentType(contentType)
-                    .build());
+            Files.createDirectories(targetPath.getParent());
+            Files.copy(stream, targetPath, StandardCopyOption.REPLACE_EXISTING);
             return objectName;
-        } catch (Exception e) {
-            throw new RuntimeException("Error storing file", e);
+        } catch (IOException e) {
+            throw new RuntimeException("Error storing file: " + objectName, e);
         }
     }
 
     public InputStream getFile(String objectName) {
+        Path filePath = resolveAndVerify(objectName);
+        if (!Files.exists(filePath)) {
+            throw new RuntimeException("File not found: " + objectName);
+        }
         try {
-            return minioClient.getObject(
-                GetObjectArgs.builder()
-                    .bucket(bucketName)
-                    .object(objectName)
-                    .build());
-        } catch (Exception e) {
-            throw new RuntimeException("Error retrieving file", e);
+            return Files.newInputStream(filePath);
+        } catch (IOException e) {
+            throw new RuntimeException("Error retrieving file: " + objectName, e);
         }
     }
 
     public void deleteFile(String objectName) {
+        Path filePath = resolveAndVerify(objectName);
         try {
-            minioClient.removeObject(
-                RemoveObjectArgs.builder()
-                    .bucket(bucketName)
-                    .object(objectName)
-                    .build());
-        } catch (Exception e) {
-            throw new RuntimeException("Error deleting file", e);
+            Files.deleteIfExists(filePath);
+        } catch (IOException e) {
+            throw new RuntimeException("Error deleting file: " + objectName, e);
         }
+    }
+
+    public Path getStorageDirectory() {
+        return storageDirectory;
+    }
+
+    private Path resolveAndVerify(String objectName) {
+        Path resolved = storageDirectory.resolve(objectName).normalize();
+        if (!resolved.startsWith(storageDirectory)) {
+            throw new SecurityException("Invalid storage path: traversal outside storage directory");
+        }
+        return resolved;
     }
 }

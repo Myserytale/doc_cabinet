@@ -65,8 +65,8 @@ public class DocumentProcessingService {
             tempFile = Files.createTempFile("docvault-extract-", ".tmp");
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
 
-            try (InputStream minioStream = storageService.getFile(document.getStoragePath());
-                 DigestInputStream dis = new DigestInputStream(minioStream, digest);
+            try (InputStream fileStream = storageService.getFile(document.getStoragePath());
+                 DigestInputStream dis = new DigestInputStream(fileStream, digest);
                  OutputStream out = Files.newOutputStream(tempFile)) {
                 dis.transferTo(out);
             }

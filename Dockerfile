@@ -19,10 +19,11 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
 RUN apk add --no-cache curl \
-    && addgroup -S docvault && adduser -S docvault -G docvault
+    && addgroup -S docvault && adduser -S docvault -G docvault \
+    && mkdir -p /data/storage
 
 COPY --from=builder /workspace/build/libs/server-0.0.1-SNAPSHOT.jar app.jar
-RUN chown -R docvault:docvault /app
+RUN chown -R docvault:docvault /app /data/storage
 
 USER docvault
 

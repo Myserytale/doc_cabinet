@@ -281,7 +281,7 @@ public class DocumentController {
         }
 
         try {
-            // Delete from MinIO
+            // Delete from storage
             storageService.deleteFile(document.getStoragePath());
             // Delete from Elasticsearch
             searchService.deleteDocument(document.getId().toString());

@@ -1,12 +1,12 @@
 # DocVault
 
-Document management and full-text search platform built with Spring Boot, PostgreSQL, MinIO, Apache Tika, Elasticsearch, and React.
+Document management and full-text search platform built with Spring Boot, PostgreSQL, Apache Tika, Elasticsearch, and React.
 
 ## Architecture
 
 - Backend: Java 21, Spring Boot 4.x, Spring Security (JWT)
 - Frontend: React 19, Tailwind CSS, Lucide Icons, Vite
-- Storage: PostgreSQL 16 (metadata), MinIO S3 (binary files)
+- Storage: PostgreSQL 16 (metadata), Local Filesystem Storage (binary files)
 - Text Extraction: Apache Tika (PDF, DOCX, XLSX, PPTX, TXT, HTML)
 - Search Engine: Elasticsearch 8.13 (multi-tenant isolated querying with highlighting)
 - Async Processing: Spring TaskExecutor
@@ -20,14 +20,13 @@ docker compose up -d
 
 Services:
 - PostgreSQL: `localhost:5432` (`docvault` / `docvaultpassword`)
-- MinIO: `localhost:9000` (Console: `localhost:9001`)
 - Elasticsearch: `localhost:9200`
 
 ### 2. Backend
 ```bash
 ./gradlew bootRun
 ```
-Listens on port 8080.
+Listens on port 8080. Files are stored locally in `./data/storage` by default (configurable via `DOCVAULT_STORAGE_LOCATION`).
 
 ### 3. Frontend
 
@@ -73,7 +72,7 @@ All `/api/documents/**` endpoints require `Authorization: Bearer <token>`.
 
 ## Ingestion Pipeline
 
-1. File uploaded and saved to MinIO (`status: PENDING`).
+1. File uploaded and saved to local storage (`status: PENDING`).
 2. Background task computes SHA-256 checksum and extracts text via Apache Tika (`status: PROCESSING`).
 3. Extracted text and metadata are indexed in Elasticsearch.
 4. Record updated in PostgreSQL (`status: INDEXED` or `status: FAILED` with error details).

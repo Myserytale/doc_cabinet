@@ -44,10 +44,7 @@ management:
       show-details: when_authorized
 
 docvault:
-  minio:
-    url: ${DOCVAULT_MINIO_URL:http://localhost:9000}
-    access-key: ${DOCVAULT_MINIO_ACCESS_KEY:docvaultadmin}
-    secret-key: ${DOCVAULT_MINIO_SECRET_KEY:docvaultadminpassword}
-    bucket: ${DOCVAULT_MINIO_BUCKET:docvault}
+  storage:
+    location: ${DOCVAULT_STORAGE_LOCATION:./data/storage}
   elasticsearch:
     uris: ${DOCVAULT_ELASTICSEARCH_URIS:http://localhost:9200}

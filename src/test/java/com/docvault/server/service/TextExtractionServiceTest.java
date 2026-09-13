@@ -27,13 +27,13 @@ class TextExtractionServiceTest {
     @Test
     void shouldExtractTextFromHtmlFile(@TempDir Path tempDir) throws Exception {
         Path htmlFile = tempDir.resolve("sample.html");
-        Files.writeString(htmlFile, "<html><body><h1>DocVault Architecture</h1><p>Elasticsearch and MinIO integration.</p></body></html>");
+        Files.writeString(htmlFile, "<html><body><h1>DocVault Architecture</h1><p>Elasticsearch and filesystem storage integration.</p></body></html>");
 
         String extracted = textExtractionService.extractText(htmlFile);
 
         assertNotNull(extracted);
         assertTrue(extracted.contains("DocVault Architecture"));
-        assertTrue(extracted.contains("Elasticsearch and MinIO integration"));
+        assertTrue(extracted.contains("Elasticsearch and filesystem storage integration"));
     }
 
     @Test
